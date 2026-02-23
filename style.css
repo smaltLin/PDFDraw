@@ -25,8 +25,12 @@
     --font: 'Noto Sans TC', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-*, *::before, *::after {
-    margin: 0; padding: 0; box-sizing: border-box;
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
 body {
@@ -43,7 +47,9 @@ body {
 /* ============ Toolbar ============ */
 .toolbar {
     position: fixed;
-    top: 0; left: 0; right: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     height: var(--toolbar-height);
     background: var(--bg-glass);
     backdrop-filter: blur(20px);
@@ -57,7 +63,9 @@ body {
     gap: 4px;
 }
 
-.toolbar-left, .toolbar-center, .toolbar-right {
+.toolbar-left,
+.toolbar-center,
+.toolbar-right {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -180,8 +188,14 @@ body {
     overflow: hidden;
 }
 
-.custom-color-input::-webkit-color-swatch-wrapper { padding: 0; }
-.custom-color-input::-webkit-color-swatch { border: none; border-radius: 50%; }
+.custom-color-input::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.custom-color-input::-webkit-color-swatch {
+    border: none;
+    border-radius: 50%;
+}
 
 /* Size Buttons */
 .size-group {
@@ -282,8 +296,15 @@ body {
 }
 
 @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
 }
 
 .upload-area h2 {
@@ -321,9 +342,7 @@ body {
 
 /* ============ Canvas Area ============ */
 .canvas-area {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
+    display: block;
     padding-top: var(--toolbar-height);
     height: 100vh;
     overflow: auto;
@@ -335,10 +354,18 @@ body {
 
 .canvas-wrapper {
     position: relative;
-    margin: 20px auto;
+    display: inline-block;
+    margin: 20px;
     box-shadow: var(--shadow), 0 0 60px rgba(0, 0, 0, 0.2);
     border-radius: 4px;
     overflow: hidden;
+}
+
+/* 讓 canvas-wrapper 水平置中，但不限制寬度 */
+.canvas-area>.canvas-wrapper {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
 }
 
 #pdf-canvas {
@@ -477,45 +504,91 @@ body {
     gap: 8px;
 }
 
-.toast.success { border-left: 3px solid var(--accent-secondary); }
-.toast.error { border-left: 3px solid #e63946; }
-.toast.info { border-left: 3px solid var(--accent); }
+.toast.success {
+    border-left: 3px solid var(--accent-secondary);
+}
+
+.toast.error {
+    border-left: 3px solid #e63946;
+}
+
+.toast.info {
+    border-left: 3px solid var(--accent);
+}
 
 @keyframes toastIn {
-    from { opacity: 0; transform: translateX(40px); }
-    to { opacity: 1; transform: translateX(0); }
+    from {
+        opacity: 0;
+        transform: translateX(40px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
 }
 
 @keyframes toastOut {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(40px); }
+    from {
+        opacity: 1;
+        transform: translateX(0);
+    }
+
+    to {
+        opacity: 0;
+        transform: translateX(40px);
+    }
 }
 
 /* ============ Scrollbar ============ */
 .canvas-area::-webkit-scrollbar {
     width: 8px;
 }
+
 .canvas-area::-webkit-scrollbar-track {
     background: transparent;
 }
+
 .canvas-area::-webkit-scrollbar-thumb {
     background: var(--bg-tertiary);
     border-radius: 4px;
 }
+
 .canvas-area::-webkit-scrollbar-thumb:hover {
     background: var(--text-muted);
 }
 
 /* ============ Responsive ============ */
 @media (max-width: 900px) {
-    .tool-btn span { display: none; }
-    .toolbar { padding: 0 6px; }
-    .slider-container { display: none; }
-    .upload-area { padding: 40px 30px; }
+    .tool-btn span {
+        display: none;
+    }
+
+    .toolbar {
+        padding: 0 6px;
+    }
+
+    .slider-container {
+        display: none;
+    }
+
+    .upload-area {
+        padding: 40px 30px;
+    }
 }
 
 @media (max-width: 600px) {
-    .colors-group { gap: 2px; }
-    .color-btn { width: 22px; height: 22px; }
-    .size-btn { width: 28px; height: 28px; }
+    .colors-group {
+        gap: 2px;
+    }
+
+    .color-btn {
+        width: 22px;
+        height: 22px;
+    }
+
+    .size-btn {
+        width: 28px;
+        height: 28px;
+    }
 }
