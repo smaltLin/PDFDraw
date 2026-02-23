@@ -677,14 +677,46 @@
         });
 
         // Drawing events (touch / stylus) — 支援多點觸控
+        // 單指觸控綁定在 drawCanvas 上（繪圖）
         els.drawCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
         els.drawCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
         els.drawCanvas.addEventListener('touchend', handleTouchEnd);
         els.drawCanvas.addEventListener('touchcancel', handleTouchEnd);
 
-        // 防止瀏覽器預設的 pinch-to-zoom
-        document.addEventListener('gesturestart', (e) => e.preventDefault());
-        document.addEventListener('gesturechange', (e) => e.preventDefault());
+        // 雙指觸控也綁定在 canvasArea 上（確保手指落在 canvas 外也能捕捉）
+        els.canvasArea.addEventListener('touchstart', (e) => {
+            if (e.touches.length >= 2) {
+                handleTouchStart(e);
+            }
+        }, { passive: false });
+        els.canvasArea.addEventListener('touchmove', (e) => {
+            if (state.multitouch.active) {
+                handleTouchMove(e);
+            }
+        }, { passive: false });
+        els.canvasArea.addEventListener('touchend', handleTouchEnd);
+
+        // 防止瀏覽器預設的 pinch-to-zoom 和雙擊縮放
+        document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+        document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
+
+        // 全域防止 touchmove 的預設行為（當正在多點觸控時）
+        document.addEventListener('touchmove', (e) => {
+            if (state.multitouch.active) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        // 防止雙擊縮放
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, { passive: false });
 
         // Pointer events for pressure sensitivity
         els.drawCanvas.addEventListener('pointerdown', (e) => {
