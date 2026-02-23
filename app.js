@@ -797,13 +797,26 @@
 
         // Window resize
         window.addEventListener('resize', () => {
+            updateToolbarHeight();
             if (state.pdfDoc) renderPage(state.currentPage);
         });
+    }
+
+    // ============ Dynamic Toolbar Height ============
+    function updateToolbarHeight() {
+        const toolbar = document.getElementById('toolbar');
+        if (toolbar) {
+            const h = toolbar.offsetHeight;
+            els.canvasArea.style.top = `${h}px`;
+            // Also update welcome screen padding
+            els.welcomeScreen.style.paddingTop = `${h}px`;
+        }
     }
 
     // ============ Init ============
     function init() {
         bindEvents();
+        updateToolbarHeight();
         els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
 
         // 自動設定版本號 (根據文件最後修改日期+時間)

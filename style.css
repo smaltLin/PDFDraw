@@ -591,20 +591,20 @@ body {
 
 /* ============ Responsive ============ */
 @media (max-width: 900px) {
+    :root {
+        --toolbar-height: auto;
+    }
+
     .tool-btn span {
         display: none;
     }
 
     .toolbar {
-        padding: 0 6px;
-        overflow-x: auto;
-        justify-content: flex-start;
-        -webkit-overflow-scrolling: touch;
-        scrollbar-width: none;
-    }
-
-    .toolbar::-webkit-scrollbar {
-        display: none;
+        padding: 6px;
+        flex-wrap: wrap;
+        height: auto;
+        justify-content: center;
+        gap: 4px 6px;
     }
 
     .toolbar-left,
@@ -615,15 +615,38 @@ body {
 
     .toolbar-center {
         flex: none;
-        margin: 0 auto;
+        justify-content: center;
+    }
+
+    .toolbar-divider {
+        display: none;
     }
 
     .slider-container {
         display: none;
     }
 
+    .canvas-area {
+        top: 0;
+        padding-top: 0;
+    }
+
+    .canvas-area.active {
+        display: flex;
+        flex-direction: column;
+    }
+
     .upload-area {
         padding: 40px 30px;
+    }
+
+    .page-nav {
+        bottom: 12px;
+    }
+
+    .zoom-controls {
+        bottom: 12px;
+        right: 12px;
     }
 }
 
@@ -633,12 +656,20 @@ body {
     }
 
     .color-btn {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
     }
 
     .size-btn {
-        width: 28px;
-        height: 28px;
+        width: 26px;
+        height: 26px;
+    }
+
+    .tool-btn {
+        padding: 5px 7px;
+    }
+
+    .tool-group {
+        gap: 1px;
     }
 }
