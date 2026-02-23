@@ -39,6 +39,7 @@ body {
     color: var(--text-primary);
     overflow: hidden;
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
     user-select: none;
     -webkit-user-select: none;
@@ -268,6 +269,7 @@ body {
     align-items: center;
     justify-content: center;
     height: 100vh;
+    height: 100dvh;
     padding-top: var(--toolbar-height);
 }
 
@@ -374,6 +376,7 @@ body {
 
 .canvas-wrapper {
     position: relative;
+    display: block;
     flex-shrink: 0;
     box-shadow: var(--shadow), 0 0 60px rgba(0, 0, 0, 0.2);
     border-radius: 4px;
@@ -382,12 +385,16 @@ body {
 
 #pdf-canvas {
     display: block;
+    width: 100%;
+    height: 100%;
 }
 
 #draw-canvas {
     position: absolute;
     top: 0;
     left: 0;
+    width: 100%;
+    height: 100%;
     cursor: crosshair;
     touch-action: none;
 }
@@ -590,6 +597,25 @@ body {
 
     .toolbar {
         padding: 0 6px;
+        overflow-x: auto;
+        justify-content: flex-start;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .toolbar::-webkit-scrollbar {
+        display: none;
+    }
+
+    .toolbar-left,
+    .toolbar-center,
+    .toolbar-right {
+        flex-shrink: 0;
+    }
+
+    .toolbar-center {
+        flex: none;
+        margin: 0 auto;
     }
 
     .slider-container {

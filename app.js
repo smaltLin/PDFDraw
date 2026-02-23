@@ -30,6 +30,8 @@
             initialScale: 1,
             initialScroll: { x: 0, y: 0 },
             initialMidpoint: { x: 0, y: 0 },
+            initialWidth: 0,
+            initialHeight: 0,
         },
         _lastTouchEnd: 0,
     };
@@ -127,6 +129,9 @@
         els.pdfCanvas.height = viewport.height;
         els.drawCanvas.width = viewport.width;
         els.drawCanvas.height = viewport.height;
+
+        els.canvasWrapper.style.width = `${viewport.width}px`;
+        els.canvasWrapper.style.height = `${viewport.height}px`;
 
         // Render PDF
         pdfCtx.clearRect(0, 0, viewport.width, viewport.height);
@@ -638,6 +643,8 @@
                 state.multitouch.initialDistance = getTouchDistance(t1, t2);
                 state.multitouch.initialScale = state.scale;
                 state.multitouch.initialMidpoint = getTouchMidpoint(t1, t2);
+                state.multitouch.initialWidth = els.canvasWrapper.offsetWidth;
+                state.multitouch.initialHeight = els.canvasWrapper.offsetHeight;
                 state.multitouch.initialScroll = {
                     x: els.canvasArea.scrollLeft,
                     y: els.canvasArea.scrollTop,
@@ -660,13 +667,26 @@
                 const dx = currentMid.x - state.multitouch.initialMidpoint.x;
                 const dy = currentMid.y - state.multitouch.initialMidpoint.y;
 
-                if (Math.abs(newScale - state.scale) > 0.01) {
-                    state.scale = newScale;
+                const S0 = state.multitouch.initialScale;
+                const S1 = newScale;
+                const Px = state.multitouch.initialMidpoint.x;
+                const Py = state.multitouch.initialMidpoint.y;
+
+                if (Math.abs(S1 - state.scale) > 0.01) {
+                    state.scale = S1;
                     els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
+
+                    // Apply CSS resize for preview
+                    const newRatio = S1 / S0;
+                    els.canvasWrapper.style.width = `${state.multitouch.initialWidth * newRatio}px`;
+                    els.canvasWrapper.style.height = `${state.multitouch.initialHeight * newRatio}px`;
                 }
 
-                els.canvasArea.scrollLeft = state.multitouch.initialScroll.x - dx;
-                els.canvasArea.scrollTop = state.multitouch.initialScroll.y - dy;
+                const targetScrollLeft = (state.multitouch.initialScroll.x + Px) * (S1 / S0) - Px;
+                const targetScrollTop = (state.multitouch.initialScroll.y + Py) * (S1 / S0) - Py;
+
+                els.canvasArea.scrollLeft = targetScrollLeft - dx;
+                els.canvasArea.scrollTop = targetScrollTop - dy;
             } else if (state.multitouch.active) {
                 e.preventDefault(); // 多點觸控中只剩一指，繼續攔截
             }
