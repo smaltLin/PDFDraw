@@ -675,9 +675,10 @@
         bindEvents();
         els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
 
-        // 自動設定版本號 (根據文件最後修改日期)
+        // 自動設定版本號 (根據文件最後修改日期+時間)
         const d = new Date(document.lastModified);
-        const ver = `v${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}`;
+        const pad = (n) => String(n).padStart(2, '0');
+        const ver = `v${d.getFullYear()}.${d.getMonth() + 1}.${d.getDate()}.${pad(d.getHours())}${pad(d.getMinutes())}`;
         const versionEl = document.getElementById('version-label');
         if (versionEl) versionEl.textContent = ver;
     }
