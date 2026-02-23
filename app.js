@@ -95,7 +95,7 @@
             state.baseScale = 1;
 
             els.welcomeScreen.style.display = 'none';
-            els.canvasArea.style.display = 'flex';
+            els.canvasArea.classList.add('active');
             els.zoomControls.style.display = 'flex';
 
             await renderPage(state.currentPage);

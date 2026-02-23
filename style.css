@@ -342,9 +342,12 @@ body {
 
 /* ============ Canvas Area ============ */
 .canvas-area {
-    display: block;
-    padding-top: var(--toolbar-height);
-    height: 100vh;
+    display: none;
+    position: fixed;
+    top: var(--toolbar-height);
+    left: 0;
+    right: 0;
+    bottom: 0;
     overflow: auto;
     background: var(--bg-primary);
     background-image:
@@ -352,20 +355,26 @@ body {
         radial-gradient(circle at 80% 50%, rgba(0, 212, 170, 0.03) 0%, transparent 50%);
 }
 
+.canvas-area.active {
+    display: block;
+}
+
+.canvas-inner {
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-width: 100%;
+    min-height: 100%;
+    width: fit-content;
+    padding: 20px;
+}
+
 .canvas-wrapper {
     position: relative;
-    display: inline-block;
-    margin: 20px;
+    flex-shrink: 0;
     box-shadow: var(--shadow), 0 0 60px rgba(0, 0, 0, 0.2);
     border-radius: 4px;
     overflow: hidden;
-}
-
-/* 讓 canvas-wrapper 水平置中，但不限制寬度 */
-.canvas-area>.canvas-wrapper {
-    display: block;
-    margin-left: auto;
-    margin-right: auto;
 }
 
 #pdf-canvas {
