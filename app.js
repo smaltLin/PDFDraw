@@ -23,6 +23,14 @@
         pages: {},
         currentStroke: null,
         fileName: 'document',
+        // 多點觸控狀態
+        multitouch: {
+            active: false,
+            initialDistance: 0,
+            initialScale: 1,
+            initialScroll: { x: 0, y: 0 },
+            initialMidpoint: { x: 0, y: 0 },
+        },
     };
 
     // ============ DOM Elements ============
@@ -146,6 +154,98 @@
         };
     }
 
+    // ============ Multi-touch Helpers ============
+    function getTouchDistance(t1, t2) {
+        const dx = t1.clientX - t2.clientX;
+        const dy = t1.clientY - t2.clientY;
+        return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    function getTouchMidpoint(t1, t2) {
+        return {
+            x: (t1.clientX + t2.clientX) / 2,
+            y: (t1.clientY + t2.clientY) / 2,
+        };
+    }
+
+    function handleTouchStart(e) {
+        // 雙指觸控 → 切換為縮放/拖曳模式
+        if (e.touches.length >= 2) {
+            e.preventDefault();
+            // 如果正在繪圖，中斷目前筆跡
+            if (state.isDrawing && state.currentStroke) {
+                state.isDrawing = false;
+                state.currentStroke = null;
+                redrawStrokes(); // 清除未完成的筆跡
+            }
+            const t1 = e.touches[0], t2 = e.touches[1];
+            state.multitouch.active = true;
+            state.multitouch.initialDistance = getTouchDistance(t1, t2);
+            state.multitouch.initialScale = state.scale;
+            state.multitouch.initialMidpoint = getTouchMidpoint(t1, t2);
+            state.multitouch.initialScroll = {
+                x: els.canvasArea.scrollLeft,
+                y: els.canvasArea.scrollTop,
+            };
+            return;
+        }
+        // 單指 → 正常繪圖
+        startDrawing(e);
+    }
+
+    function handleTouchMove(e) {
+        // 雙指操作中
+        if (state.multitouch.active && e.touches.length >= 2) {
+            e.preventDefault();
+            const t1 = e.touches[0], t2 = e.touches[1];
+
+            // 計算縮放
+            const currentDist = getTouchDistance(t1, t2);
+            const ratio = currentDist / state.multitouch.initialDistance;
+            const newScale = Math.max(0.5, Math.min(4, state.multitouch.initialScale * ratio));
+
+            // 計算拖曳偏移
+            const currentMid = getTouchMidpoint(t1, t2);
+            const dx = currentMid.x - state.multitouch.initialMidpoint.x;
+            const dy = currentMid.y - state.multitouch.initialMidpoint.y;
+
+            // 更新縮放（不呼叫 setZoom 以避免不必要的重新渲染）
+            if (Math.abs(newScale - state.scale) > 0.01) {
+                state.scale = newScale;
+                els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
+            }
+
+            // 拖曳捲動
+            els.canvasArea.scrollLeft = state.multitouch.initialScroll.x - dx;
+            els.canvasArea.scrollTop = state.multitouch.initialScroll.y - dy;
+            return;
+        }
+
+        // 如果多點觸控啟動中但只剩一指，忽略
+        if (state.multitouch.active) {
+            e.preventDefault();
+            return;
+        }
+
+        // 單指 → 正常繪圖
+        draw(e);
+    }
+
+    async function handleTouchEnd(e) {
+        if (state.multitouch.active) {
+            // 當所有手指離開，完成多點觸控並重新渲染
+            if (e.touches.length === 0) {
+                state.multitouch.active = false;
+                // 重新渲染以套用新的 scale
+                if (state.pdfDoc) {
+                    await renderPage(state.currentPage);
+                }
+            }
+            return;
+        }
+        stopDrawing(e);
+    }
+
     // ============ Drawing Engine ============
     function getPointerPos(e) {
         const rect = els.drawCanvas.getBoundingClientRect();
@@ -163,11 +263,9 @@
             pressure = e.pressure || 0.5;
         }
 
-        // 螢幕上的 canvas 像素座標
         const canvasX = (clientX - rect.left) * scaleX;
         const canvasY = (clientY - rect.top) * scaleY;
 
-        // 轉成正規化座標（不受 scale 影響）
         const normalized = screenToNormalized(canvasX, canvasY);
         return {
             x: normalized.x,
@@ -578,15 +676,21 @@
             stopDrawing(e);
         });
 
-        // Drawing events (touch / stylus)
-        els.drawCanvas.addEventListener('touchstart', startDrawing, { passive: false });
-        els.drawCanvas.addEventListener('touchmove', draw, { passive: false });
-        els.drawCanvas.addEventListener('touchend', stopDrawing);
-        els.drawCanvas.addEventListener('touchcancel', stopDrawing);
+        // Drawing events (touch / stylus) — 支援多點觸控
+        els.drawCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+        els.drawCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+        els.drawCanvas.addEventListener('touchend', handleTouchEnd);
+        els.drawCanvas.addEventListener('touchcancel', handleTouchEnd);
+
+        // 防止瀏覽器預設的 pinch-to-zoom
+        document.addEventListener('gesturestart', (e) => e.preventDefault());
+        document.addEventListener('gesturechange', (e) => e.preventDefault());
 
         // Pointer events for pressure sensitivity
         els.drawCanvas.addEventListener('pointerdown', (e) => {
-            els.drawCanvas.setPointerCapture(e.pointerId);
+            if (e.pointerType !== 'touch') {
+                els.drawCanvas.setPointerCapture(e.pointerId);
+            }
         });
 
         // Tool buttons
