@@ -31,6 +31,7 @@
             initialScroll: { x: 0, y: 0 },
             initialMidpoint: { x: 0, y: 0 },
         },
+        _lastTouchEnd: 0,
     };
 
     // ============ DOM Elements ============
@@ -166,84 +167,6 @@
             x: (t1.clientX + t2.clientX) / 2,
             y: (t1.clientY + t2.clientY) / 2,
         };
-    }
-
-    function handleTouchStart(e) {
-        // 雙指觸控 → 切換為縮放/拖曳模式
-        if (e.touches.length >= 2) {
-            e.preventDefault();
-            // 如果正在繪圖，中斷目前筆跡
-            if (state.isDrawing && state.currentStroke) {
-                state.isDrawing = false;
-                state.currentStroke = null;
-                redrawStrokes(); // 清除未完成的筆跡
-            }
-            const t1 = e.touches[0], t2 = e.touches[1];
-            state.multitouch.active = true;
-            state.multitouch.initialDistance = getTouchDistance(t1, t2);
-            state.multitouch.initialScale = state.scale;
-            state.multitouch.initialMidpoint = getTouchMidpoint(t1, t2);
-            state.multitouch.initialScroll = {
-                x: els.canvasArea.scrollLeft,
-                y: els.canvasArea.scrollTop,
-            };
-            return;
-        }
-        // 單指 → 正常繪圖
-        startDrawing(e);
-    }
-
-    function handleTouchMove(e) {
-        // 雙指操作中
-        if (state.multitouch.active && e.touches.length >= 2) {
-            e.preventDefault();
-            const t1 = e.touches[0], t2 = e.touches[1];
-
-            // 計算縮放
-            const currentDist = getTouchDistance(t1, t2);
-            const ratio = currentDist / state.multitouch.initialDistance;
-            const newScale = Math.max(0.5, Math.min(4, state.multitouch.initialScale * ratio));
-
-            // 計算拖曳偏移
-            const currentMid = getTouchMidpoint(t1, t2);
-            const dx = currentMid.x - state.multitouch.initialMidpoint.x;
-            const dy = currentMid.y - state.multitouch.initialMidpoint.y;
-
-            // 更新縮放（不呼叫 setZoom 以避免不必要的重新渲染）
-            if (Math.abs(newScale - state.scale) > 0.01) {
-                state.scale = newScale;
-                els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
-            }
-
-            // 拖曳捲動
-            els.canvasArea.scrollLeft = state.multitouch.initialScroll.x - dx;
-            els.canvasArea.scrollTop = state.multitouch.initialScroll.y - dy;
-            return;
-        }
-
-        // 如果多點觸控啟動中但只剩一指，忽略
-        if (state.multitouch.active) {
-            e.preventDefault();
-            return;
-        }
-
-        // 單指 → 正常繪圖
-        draw(e);
-    }
-
-    async function handleTouchEnd(e) {
-        if (state.multitouch.active) {
-            // 當所有手指離開，完成多點觸控並重新渲染
-            if (e.touches.length === 0) {
-                state.multitouch.active = false;
-                // 重新渲染以套用新的 scale
-                if (state.pdfDoc) {
-                    await renderPage(state.currentPage);
-                }
-            }
-            return;
-        }
-        stopDrawing(e);
     }
 
     // ============ Drawing Engine ============
@@ -661,69 +584,121 @@
             if (file && file.type === 'application/pdf') loadPDF(file);
         });
 
-        // Drawing events (mouse)
-        els.drawCanvas.addEventListener('mousedown', (e) => {
+        // ======== Pointer Events（統一處理滑鼠 + 觸控筆 + 單指觸控繪圖） ========
+        els.drawCanvas.addEventListener('pointerdown', (e) => {
+            // 多點觸控進行中時，忽略新的 pointer 事件
+            if (state.multitouch.active) return;
+            // 觸控的 pointerdown：只有單指才處理（雙指由 touch events 處理）
+            if (e.pointerType === 'touch') {
+                // 不要 capture touch pointer，以免影響多指偵測
+            } else {
+                els.drawCanvas.setPointerCapture(e.pointerId);
+            }
             if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grabbing';
             startDrawing(e);
         });
-        els.drawCanvas.addEventListener('mousemove', draw);
-        els.drawCanvas.addEventListener('mouseup', (e) => {
-            if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
-            stopDrawing(e);
+
+        els.drawCanvas.addEventListener('pointermove', (e) => {
+            if (state.multitouch.active) return;
+            draw(e);
         });
-        els.drawCanvas.addEventListener('mouseleave', (e) => {
+
+        els.drawCanvas.addEventListener('pointerup', (e) => {
+            if (state.multitouch.active) return;
             if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
             stopDrawing(e);
         });
 
-        // Drawing events (touch / stylus) — 支援多點觸控
-        // 單指觸控綁定在 drawCanvas 上（繪圖）
-        els.drawCanvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-        els.drawCanvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-        els.drawCanvas.addEventListener('touchend', handleTouchEnd);
-        els.drawCanvas.addEventListener('touchcancel', handleTouchEnd);
+        els.drawCanvas.addEventListener('pointerleave', (e) => {
+            if (state.multitouch.active) return;
+            if (e.pointerType !== 'touch') {
+                if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
+                stopDrawing(e);
+            }
+        });
 
-        // 雙指觸控也綁定在 canvasArea 上（確保手指落在 canvas 外也能捕捉）
-        els.canvasArea.addEventListener('touchstart', (e) => {
+        els.drawCanvas.addEventListener('pointercancel', (e) => {
+            if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
+            stopDrawing(e);
+        });
+
+        // ======== Touch Events（專門處理雙指縮放/拖曳） ========
+        // 在 document 層級攔截，確保最優先
+        document.addEventListener('touchstart', (e) => {
             if (e.touches.length >= 2) {
-                handleTouchStart(e);
+                e.preventDefault();
+                // 如果正在繪圖，中斷目前筆跡
+                if (state.isDrawing && state.currentStroke) {
+                    state.isDrawing = false;
+                    state.currentStroke = null;
+                    redrawStrokes();
+                }
+                const t1 = e.touches[0], t2 = e.touches[1];
+                state.multitouch.active = true;
+                state.multitouch.initialDistance = getTouchDistance(t1, t2);
+                state.multitouch.initialScale = state.scale;
+                state.multitouch.initialMidpoint = getTouchMidpoint(t1, t2);
+                state.multitouch.initialScroll = {
+                    x: els.canvasArea.scrollLeft,
+                    y: els.canvasArea.scrollTop,
+                };
             }
         }, { passive: false });
-        els.canvasArea.addEventListener('touchmove', (e) => {
-            if (state.multitouch.active) {
-                handleTouchMove(e);
-            }
-        }, { passive: false });
-        els.canvasArea.addEventListener('touchend', handleTouchEnd);
 
-        // 防止瀏覽器預設的 pinch-to-zoom 和雙擊縮放
+        document.addEventListener('touchmove', (e) => {
+            if (state.multitouch.active && e.touches.length >= 2) {
+                e.preventDefault();
+                const t1 = e.touches[0], t2 = e.touches[1];
+
+                // 計算縮放
+                const currentDist = getTouchDistance(t1, t2);
+                const ratio = currentDist / state.multitouch.initialDistance;
+                const newScale = Math.max(0.5, Math.min(4, state.multitouch.initialScale * ratio));
+
+                // 計算拖曳偏移
+                const currentMid = getTouchMidpoint(t1, t2);
+                const dx = currentMid.x - state.multitouch.initialMidpoint.x;
+                const dy = currentMid.y - state.multitouch.initialMidpoint.y;
+
+                if (Math.abs(newScale - state.scale) > 0.01) {
+                    state.scale = newScale;
+                    els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
+                }
+
+                els.canvasArea.scrollLeft = state.multitouch.initialScroll.x - dx;
+                els.canvasArea.scrollTop = state.multitouch.initialScroll.y - dy;
+            } else if (state.multitouch.active) {
+                e.preventDefault(); // 多點觸控中只剩一指，繼續攔截
+            }
+        }, { passive: false });
+
+        document.addEventListener('touchend', async (e) => {
+            if (state.multitouch.active) {
+                if (e.touches.length === 0) {
+                    state.multitouch.active = false;
+                    if (state.pdfDoc) {
+                        await renderPage(state.currentPage);
+                    }
+                }
+                e.preventDefault();
+                return;
+            }
+            // 防止雙擊縮放
+            const now = Date.now();
+            if (now - state._lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            state._lastTouchEnd = now;
+        }, { passive: false });
+
+        document.addEventListener('touchcancel', () => {
+            state.multitouch.active = false;
+        });
+
+        // 防止 Safari 的 gesture events
         document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
         document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
         document.addEventListener('gestureend', (e) => e.preventDefault(), { passive: false });
-
-        // 全域防止 touchmove 的預設行為（當正在多點觸控時）
-        document.addEventListener('touchmove', (e) => {
-            if (state.multitouch.active) {
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        // 防止雙擊縮放
-        let lastTouchEnd = 0;
-        document.addEventListener('touchend', (e) => {
-            const now = Date.now();
-            if (now - lastTouchEnd <= 300) {
-                e.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, { passive: false });
-
-        // Pointer events for pressure sensitivity
-        els.drawCanvas.addEventListener('pointerdown', (e) => {
-            if (e.pointerType !== 'touch') {
-                els.drawCanvas.setPointerCapture(e.pointerId);
-            }
-        });
 
         // Tool buttons
         els.btnPen.addEventListener('click', () => setTool('pen'));
