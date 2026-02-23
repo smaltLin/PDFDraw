@@ -558,6 +558,18 @@ body {
     background: var(--text-muted);
 }
 
+/* ============ Version Label ============ */
+.version-label {
+    position: fixed;
+    bottom: 8px;
+    left: 12px;
+    font-size: 11px;
+    color: var(--text-muted);
+    opacity: 0.5;
+    z-index: 90;
+    pointer-events: none;
+}
+
 /* ============ Responsive ============ */
 @media (max-width: 900px) {
     .tool-btn span {
