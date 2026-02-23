@@ -645,8 +645,20 @@ body {
     }
 
     .zoom-controls {
-        bottom: 12px;
-        right: 12px;
+        bottom: auto;
+        top: 50%;
+        transform: translateY(-50%);
+        right: 8px;
+        flex-direction: column;
+        padding: 8px 6px;
+        border-radius: 20px;
+        opacity: 0.55;
+        transition: opacity 0.2s ease;
+    }
+
+    .zoom-controls:hover,
+    .zoom-controls:active {
+        opacity: 1;
     }
 }
 
