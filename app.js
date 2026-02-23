@@ -11,10 +11,14 @@
         currentPage: 1,
         totalPages: 0,
         scale: 1.5,
-        tool: 'pen',         // 'pen' | 'eraser'
+        baseScale: 1,       // PDF viewport at scale=1 用來正規化座標
+        tool: 'pen',         // 'pen' | 'eraser' | 'hand'
         color: '#1a1a2e',
         lineWidth: 2,
         isDrawing: false,
+        isPanning: false,
+        panStart: { x: 0, y: 0 },
+        scrollStart: { x: 0, y: 0 },
         // Per-page drawing data: { pageNum: { strokes: [...], redoStack: [...] } }
         pages: {},
         currentStroke: null,
@@ -37,6 +41,7 @@
         btnOpen: $('#btn-open'),
         btnPen: $('#btn-pen'),
         btnEraser: $('#btn-eraser'),
+        btnHand: $('#btn-hand'),
         btnUndo: $('#btn-undo'),
         btnRedo: $('#btn-redo'),
         btnClear: $('#btn-clear'),
@@ -81,7 +86,13 @@
             state.pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
             state.totalPages = state.pdfDoc.numPages;
             state.currentPage = 1;
+            state.pages = {}; // reset drawings
             state.fileName = file.name.replace(/\.pdf$/i, '');
+
+            // 取得基準 viewport (scale=1) 用於正規化座標
+            const firstPage = await state.pdfDoc.getPage(1);
+            const baseViewport = firstPage.getViewport({ scale: 1 });
+            state.baseScale = 1;
 
             els.welcomeScreen.style.display = 'none';
             els.canvasArea.style.display = 'flex';
@@ -112,9 +123,27 @@
         pdfCtx.clearRect(0, 0, viewport.width, viewport.height);
         await page.render({ canvasContext: pdfCtx, viewport }).promise;
 
-        // Restore drawings
+        // Restore drawings (strokes are stored in normalized coords, scale them)
         redrawStrokes();
         updateUndoRedoState();
+    }
+
+    // ============ Coordinate Normalization ============
+    // 座標正規化：儲存時除以 scale，顯示時乘以 scale
+    // 這樣筆跡會跟隨縮放正確顯示
+
+    function screenToNormalized(x, y) {
+        return {
+            x: x / state.scale,
+            y: y / state.scale,
+        };
+    }
+
+    function normalizedToScreen(x, y) {
+        return {
+            x: x * state.scale,
+            y: y * state.scale,
+        };
     }
 
     // ============ Drawing Engine ============
@@ -123,21 +152,51 @@
         const scaleX = els.drawCanvas.width / rect.width;
         const scaleY = els.drawCanvas.height / rect.height;
 
+        let clientX, clientY, pressure;
         if (e.touches && e.touches.length > 0) {
-            return {
-                x: (e.touches[0].clientX - rect.left) * scaleX,
-                y: (e.touches[0].clientY - rect.top) * scaleY,
-                pressure: e.touches[0].force || 0.5,
-            };
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+            pressure = e.touches[0].force || 0.5;
+        } else {
+            clientX = e.clientX;
+            clientY = e.clientY;
+            pressure = e.pressure || 0.5;
         }
+
+        // 螢幕上的 canvas 像素座標
+        const canvasX = (clientX - rect.left) * scaleX;
+        const canvasY = (clientY - rect.top) * scaleY;
+
+        // 轉成正規化座標（不受 scale 影響）
+        const normalized = screenToNormalized(canvasX, canvasY);
         return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY,
-            pressure: e.pressure || 0.5,
+            x: normalized.x,
+            y: normalized.y,
+            pressure,
         };
     }
 
+    function getPointerScreenPos(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+
     function startDrawing(e) {
+        // Hand tool: 拖動模式
+        if (state.tool === 'hand') {
+            e.preventDefault();
+            state.isPanning = true;
+            const pos = getPointerScreenPos(e);
+            state.panStart = { x: pos.x, y: pos.y };
+            state.scrollStart = {
+                x: els.canvasArea.scrollLeft,
+                y: els.canvasArea.scrollTop,
+            };
+            return;
+        }
+
         e.preventDefault();
         state.isDrawing = true;
         const pos = getPointerPos(e);
@@ -151,6 +210,17 @@
     }
 
     function draw(e) {
+        // Hand tool: 拖動
+        if (state.tool === 'hand' && state.isPanning) {
+            e.preventDefault();
+            const pos = getPointerScreenPos(e);
+            const dx = pos.x - state.panStart.x;
+            const dy = pos.y - state.panStart.y;
+            els.canvasArea.scrollLeft = state.scrollStart.x - dx;
+            els.canvasArea.scrollTop = state.scrollStart.y - dy;
+            return;
+        }
+
         if (!state.isDrawing || !state.currentStroke) return;
         e.preventDefault();
         const pos = getPointerPos(e);
@@ -172,7 +242,8 @@
             drawCtx.strokeStyle = stroke.color;
         }
 
-        drawCtx.lineWidth = stroke.lineWidth;
+        // lineWidth 也要隨 scale 變化
+        drawCtx.lineWidth = stroke.lineWidth * state.scale;
         drawCtx.lineCap = 'round';
         drawCtx.lineJoin = 'round';
 
@@ -180,9 +251,9 @@
         const len = points.length;
         if (len >= 3) {
             drawCtx.beginPath();
-            const p0 = points[len - 3];
-            const p1 = points[len - 2];
-            const p2 = points[len - 1];
+            const p0 = normalizedToScreen(points[len - 3].x, points[len - 3].y);
+            const p1 = normalizedToScreen(points[len - 2].x, points[len - 2].y);
+            const p2 = normalizedToScreen(points[len - 1].x, points[len - 1].y);
             const midX1 = (p0.x + p1.x) / 2;
             const midY1 = (p0.y + p1.y) / 2;
             const midX2 = (p1.x + p2.x) / 2;
@@ -192,8 +263,10 @@
             drawCtx.stroke();
         } else {
             drawCtx.beginPath();
-            drawCtx.moveTo(points[len - 2].x, points[len - 2].y);
-            drawCtx.lineTo(points[len - 1].x, points[len - 1].y);
+            const a = normalizedToScreen(points[len - 2].x, points[len - 2].y);
+            const b = normalizedToScreen(points[len - 1].x, points[len - 1].y);
+            drawCtx.moveTo(a.x, a.y);
+            drawCtx.lineTo(b.x, b.y);
             drawCtx.stroke();
         }
 
@@ -201,6 +274,12 @@
     }
 
     function stopDrawing(e) {
+        // Hand tool
+        if (state.tool === 'hand') {
+            state.isPanning = false;
+            return;
+        }
+
         if (!state.isDrawing || !state.currentStroke) return;
         e && e.preventDefault();
         state.isDrawing = false;
@@ -214,7 +293,7 @@
         state.currentStroke = null;
     }
 
-    function drawStroke(ctx, stroke) {
+    function drawStroke(ctx, stroke, scale) {
         const points = stroke.points;
         if (points.length < 2) return;
 
@@ -228,24 +307,26 @@
             ctx.strokeStyle = stroke.color;
         }
 
-        ctx.lineWidth = stroke.lineWidth;
+        // lineWidth 乘以 scale，讓粗細跟隨縮放
+        ctx.lineWidth = stroke.lineWidth * scale;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
 
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
+        // 將正規化座標轉換為螢幕座標
+        const screenPoints = points.map((p) => normalizedToScreen(p.x, p.y));
 
-        if (points.length === 2) {
-            ctx.lineTo(points[1].x, points[1].y);
+        ctx.beginPath();
+        ctx.moveTo(screenPoints[0].x, screenPoints[0].y);
+
+        if (screenPoints.length === 2) {
+            ctx.lineTo(screenPoints[1].x, screenPoints[1].y);
         } else {
-            // Smooth curve using quadratic bezier
-            for (let i = 1; i < points.length - 1; i++) {
-                const midX = (points[i].x + points[i + 1].x) / 2;
-                const midY = (points[i].y + points[i + 1].y) / 2;
-                ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+            for (let i = 1; i < screenPoints.length - 1; i++) {
+                const midX = (screenPoints[i].x + screenPoints[i + 1].x) / 2;
+                const midY = (screenPoints[i].y + screenPoints[i + 1].y) / 2;
+                ctx.quadraticCurveTo(screenPoints[i].x, screenPoints[i].y, midX, midY);
             }
-            // Last segment
-            const last = points[points.length - 1];
+            const last = screenPoints[screenPoints.length - 1];
             ctx.lineTo(last.x, last.y);
         }
 
@@ -256,7 +337,7 @@
     function redrawStrokes() {
         drawCtx.clearRect(0, 0, els.drawCanvas.width, els.drawCanvas.height);
         const pageData = getPageData(state.currentPage);
-        pageData.strokes.forEach((stroke) => drawStroke(drawCtx, stroke));
+        pageData.strokes.forEach((stroke) => drawStroke(drawCtx, stroke, state.scale));
     }
 
     // ============ Undo / Redo ============
@@ -281,7 +362,6 @@
     function clearPage() {
         const pageData = getPageData(state.currentPage);
         if (pageData.strokes.length === 0) return;
-        // Save all strokes as one undo-able action
         pageData.redoStack.push(...pageData.strokes.reverse());
         pageData.strokes = [];
         redrawStrokes();
@@ -315,7 +395,6 @@
         els.zoomInfo.textContent = `${Math.round(state.scale * 100)}%`;
 
         if (state.pdfDoc) {
-            // Save current strokes relative positions
             await renderPage(state.currentPage);
         }
     }
@@ -341,16 +420,11 @@
         mergeCanvas.height = els.pdfCanvas.height;
         const mergeCtx = mergeCanvas.getContext('2d');
 
-        // Draw white background
         mergeCtx.fillStyle = '#ffffff';
         mergeCtx.fillRect(0, 0, mergeCanvas.width, mergeCanvas.height);
-
-        // Draw PDF layer
         mergeCtx.drawImage(els.pdfCanvas, 0, 0);
-        // Draw annotations layer
         mergeCtx.drawImage(els.drawCanvas, 0, 0);
 
-        // Download
         const link = document.createElement('a');
         link.download = `${state.fileName}_p${state.currentPage}.jpg`;
         link.href = mergeCanvas.toDataURL('image/jpeg', 0.92);
@@ -369,9 +443,8 @@
         const savedPage = state.currentPage;
 
         for (let i = 1; i <= state.totalPages; i++) {
-            await renderPage(i);
             state.currentPage = i;
-            redrawStrokes();
+            await renderPage(i);
 
             const mergeCanvas = document.createElement('canvas');
             mergeCanvas.width = els.pdfCanvas.width;
@@ -388,11 +461,9 @@
             link.href = mergeCanvas.toDataURL('image/jpeg', 0.92);
             link.click();
 
-            // Small delay between downloads
             await new Promise((r) => setTimeout(r, 300));
         }
 
-        // Restore original page
         state.currentPage = savedPage;
         await renderPage(savedPage);
         updatePageNav();
@@ -405,7 +476,16 @@
         state.tool = tool;
         els.btnPen.classList.toggle('active', tool === 'pen');
         els.btnEraser.classList.toggle('active', tool === 'eraser');
-        els.drawCanvas.style.cursor = tool === 'eraser' ? 'cell' : 'crosshair';
+        els.btnHand.classList.toggle('active', tool === 'hand');
+
+        if (tool === 'hand') {
+            els.drawCanvas.style.cursor = 'grab';
+            els.drawCanvas.style.pointerEvents = 'auto';
+        } else if (tool === 'eraser') {
+            els.drawCanvas.style.cursor = 'cell';
+        } else {
+            els.drawCanvas.style.cursor = 'crosshair';
+        }
     }
 
     function setColor(color) {
@@ -413,8 +493,7 @@
         $$('.color-btn').forEach((btn) => {
             btn.classList.toggle('active', btn.dataset.color === color);
         });
-        // If user selects a color, switch to pen
-        if (state.tool === 'eraser') setTool('pen');
+        if (state.tool !== 'pen') setTool('pen');
     }
 
     function setLineWidth(width) {
@@ -425,12 +504,34 @@
         });
     }
 
+    // ============ File Open Helper ============
+    function openFileDialog() {
+        // 重設 value 避免選同一檔案不觸發 change 事件
+        els.fileInput.value = '';
+        els.fileInput.click();
+    }
+
     // ============ Event Bindings ============
     function bindEvents() {
-        // File Input
-        els.btnOpen.addEventListener('click', () => els.fileInput.click());
-        els.uploadBtn.addEventListener('click', () => els.fileInput.click());
-        els.uploadArea.addEventListener('click', () => els.fileInput.click());
+        // File Input — 修復重複觸發問題
+        els.btnOpen.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openFileDialog();
+        });
+
+        els.uploadBtn.addEventListener('click', (e) => {
+            e.stopPropagation(); // 防止冒泡到 uploadArea 再次觸發
+            openFileDialog();
+        });
+
+        els.uploadArea.addEventListener('click', (e) => {
+            // 只在直接點擊 uploadArea 時觸發，而非其子元素冒泡
+            if (e.target === els.uploadArea || e.target.closest('.upload-area') === els.uploadArea) {
+                // 若是從 uploadBtn 冒泡上來的，不再處理
+                if (e.target === els.uploadBtn || e.target.closest('#upload-btn')) return;
+                openFileDialog();
+            }
+        });
 
         els.fileInput.addEventListener('change', (e) => {
             if (e.target.files.length > 0) loadPDF(e.target.files[0]);
@@ -455,7 +556,6 @@
             }
         });
 
-        // Also support drag & drop on the whole body for convenience
         document.body.addEventListener('dragover', (e) => e.preventDefault());
         document.body.addEventListener('drop', (e) => {
             e.preventDefault();
@@ -464,10 +564,19 @@
         });
 
         // Drawing events (mouse)
-        els.drawCanvas.addEventListener('mousedown', startDrawing);
+        els.drawCanvas.addEventListener('mousedown', (e) => {
+            if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grabbing';
+            startDrawing(e);
+        });
         els.drawCanvas.addEventListener('mousemove', draw);
-        els.drawCanvas.addEventListener('mouseup', stopDrawing);
-        els.drawCanvas.addEventListener('mouseleave', stopDrawing);
+        els.drawCanvas.addEventListener('mouseup', (e) => {
+            if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
+            stopDrawing(e);
+        });
+        els.drawCanvas.addEventListener('mouseleave', (e) => {
+            if (state.tool === 'hand') els.drawCanvas.style.cursor = 'grab';
+            stopDrawing(e);
+        });
 
         // Drawing events (touch / stylus)
         els.drawCanvas.addEventListener('touchstart', startDrawing, { passive: false });
@@ -477,13 +586,13 @@
 
         // Pointer events for pressure sensitivity
         els.drawCanvas.addEventListener('pointerdown', (e) => {
-            // Capture pointer for reliable tracking
             els.drawCanvas.setPointerCapture(e.pointerId);
         });
 
         // Tool buttons
         els.btnPen.addEventListener('click', () => setTool('pen'));
         els.btnEraser.addEventListener('click', () => setTool('eraser'));
+        els.btnHand.addEventListener('click', () => setTool('hand'));
 
         // Color buttons
         $$('.color-btn').forEach((btn) => {
@@ -491,7 +600,6 @@
         });
         els.customColor.addEventListener('input', (e) => {
             setColor(e.target.value);
-            // Deselect preset colors
             $$('.color-btn').forEach((b) => b.classList.remove('active'));
         });
 
@@ -501,7 +609,6 @@
         });
         els.sizeSlider.addEventListener('input', (e) => {
             setLineWidth(e.target.value);
-            // Deselect preset size buttons if not matching
             $$('.size-btn').forEach((btn) => {
                 btn.classList.toggle('active', parseFloat(btn.dataset.size) === parseFloat(e.target.value));
             });
@@ -527,29 +634,23 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Ctrl+O: Open file
             if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
                 e.preventDefault();
-                els.fileInput.click();
+                openFileDialog();
             }
-            // Ctrl+Z: Undo
             if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
                 e.preventDefault();
                 undo();
             }
-            // Ctrl+Y or Ctrl+Shift+Z: Redo
             if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
                 e.preventDefault();
                 redo();
             }
-            // P: Pen tool
             if (e.key === 'p' && !e.ctrlKey && !e.metaKey) setTool('pen');
-            // E: Eraser tool
             if (e.key === 'e' && !e.ctrlKey && !e.metaKey) setTool('eraser');
-            // Arrow keys for page navigation
+            if (e.key === 'h' && !e.ctrlKey && !e.metaKey) setTool('hand');
             if (e.key === 'ArrowLeft' && !e.ctrlKey) goToPage(state.currentPage - 1);
             if (e.key === 'ArrowRight' && !e.ctrlKey) goToPage(state.currentPage + 1);
-            // +/-: Zoom
             if (e.key === '+' || e.key === '=') setZoom(state.scale + 0.25);
             if (e.key === '-') setZoom(state.scale - 0.25);
         });
