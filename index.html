@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF 繪圖作答工具</title>
+    <meta name="description" content="載入 PDF 考卷，直接在上面用滑鼠或觸控筆作答，並匯出為 JPG。">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 頂部工具列 -->
+    <header class="toolbar" id="toolbar">
+        <div class="toolbar-left">
+            <button class="tool-btn" id="btn-open" title="開啟 PDF (Ctrl+O)">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+                <span>開啟 PDF</span>
+            </button>
+            <input type="file" id="file-input" accept="application/pdf" hidden>
+            <div class="toolbar-divider"></div>
+        </div>
+
+        <div class="toolbar-center">
+            <!-- 畫筆工具 -->
+            <div class="tool-group">
+                <button class="tool-btn active" id="btn-pen" title="畫筆 (P)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+                        <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+                        <path d="M2 2l7.586 7.586"/>
+                        <circle cx="11" cy="11" r="2"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" id="btn-eraser" title="橡皮擦 (E)">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8L14.6 1.6c.8-.8 2-.8 2.8 0L21.4 5.6c.8.8.8 2 0 2.8L10 20"/>
+                        <path d="M6 12l5 5"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- 顏色選擇 -->
+            <div class="tool-group colors-group">
+                <button class="color-btn active" data-color="#1a1a2e" style="--btn-color: #1a1a2e" title="黑色"></button>
+                <button class="color-btn" data-color="#e63946" style="--btn-color: #e63946" title="紅色"></button>
+                <button class="color-btn" data-color="#2196F3" style="--btn-color: #2196F3" title="藍色"></button>
+                <button class="color-btn" data-color="#4caf50" style="--btn-color: #4caf50" title="綠色"></button>
+                <button class="color-btn" data-color="#ff9800" style="--btn-color: #ff9800" title="橘色"></button>
+                <button class="color-btn" data-color="#9c27b0" style="--btn-color: #9c27b0" title="紫色"></button>
+                <input type="color" id="custom-color" class="custom-color-input" value="#1a1a2e" title="自定義顏色">
+            </div>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- 粗細選擇 -->
+            <div class="tool-group size-group">
+                <button class="size-btn active" data-size="2" title="細">
+                    <span class="size-dot" style="width:4px;height:4px;"></span>
+                </button>
+                <button class="size-btn" data-size="4" title="中">
+                    <span class="size-dot" style="width:8px;height:8px;"></span>
+                </button>
+                <button class="size-btn" data-size="8" title="粗">
+                    <span class="size-dot" style="width:14px;height:14px;"></span>
+                </button>
+                <div class="slider-container">
+                    <input type="range" id="size-slider" min="1" max="20" value="2" class="size-slider" title="筆刷大小">
+                </div>
+            </div>
+
+            <div class="toolbar-divider"></div>
+
+            <!-- Undo / Redo -->
+            <div class="tool-group">
+                <button class="tool-btn" id="btn-undo" title="復原 (Ctrl+Z)" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="1 4 1 10 7 10"/>
+                        <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" id="btn-redo" title="重做 (Ctrl+Y)" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/>
+                        <path d="M20.49 15a9 9 0 1 1-2.13-9.36L23 10"/>
+                    </svg>
+                </button>
+                <button class="tool-btn" id="btn-clear" title="清除本頁繪圖">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="toolbar-right">
+            <div class="toolbar-divider"></div>
+            <!-- 匯出 -->
+            <button class="tool-btn accent" id="btn-export" title="匯出當前頁 JPG">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>匯出 JPG</span>
+            </button>
+            <button class="tool-btn accent-secondary" id="btn-export-all" title="匯出全部頁面 JPG">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>全部匯出</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 歡迎畫面 / 上傳區 -->
+    <div class="welcome-screen" id="welcome-screen">
+        <div class="upload-area" id="upload-area">
+            <div class="upload-icon">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="12" y1="18" x2="12" y2="12"/>
+                    <line x1="9" y1="15" x2="15" y2="15"/>
+                </svg>
+            </div>
+            <h2>載入 PDF 考卷</h2>
+            <p>拖放 PDF 檔案到此處，或點擊下方按鈕選擇檔案</p>
+            <button class="upload-btn" id="upload-btn">選擇 PDF 檔案</button>
+        </div>
+    </div>
+
+    <!-- PDF 顯示與繪圖區 -->
+    <main class="canvas-area" id="canvas-area" style="display:none;">
+        <div class="canvas-wrapper" id="canvas-wrapper">
+            <canvas id="pdf-canvas"></canvas>
+            <canvas id="draw-canvas"></canvas>
+        </div>
+
+        <!-- 分頁導覽 -->
+        <div class="page-nav" id="page-nav">
+            <button class="page-btn" id="btn-prev" title="上一頁">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"/>
+                </svg>
+            </button>
+            <span class="page-info" id="page-info">1 / 1</span>
+            <button class="page-btn" id="btn-next" title="下一頁">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="9 18 15 12 9 6"/>
+                </svg>
+            </button>
+        </div>
+    </main>
+
+    <!-- 縮放控制 -->
+    <div class="zoom-controls" id="zoom-controls" style="display:none;">
+        <button class="zoom-btn" id="btn-zoom-out" title="縮小">−</button>
+        <span class="zoom-info" id="zoom-info">100%</span>
+        <button class="zoom-btn" id="btn-zoom-in" title="放大">+</button>
+        <button class="zoom-btn" id="btn-zoom-fit" title="適合寬度">⊞</button>
+    </div>
+
+    <!-- Toast 通知 -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <script src="app.js"></script>
+</body>
+</html>
